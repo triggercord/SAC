@@ -1,0 +1,27 @@
+{
+  "name": "sac",
+  "version": "0.1.0",
+  "description": "SummerArtContest",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node src/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/triggercord/SAC.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/triggercord/SAC/issues"
+  },
+  "homepage": "https://github.com/triggercord/SAC#readme",
+  "dependencies": {
+    "express": "^4.17.1",
+    "ioredis": "^4.27.6",
+    "morgan": "^1.10.0",
+    "node-fetch": "^2.6.1"
+  }
+}
