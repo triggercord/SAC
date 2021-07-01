@@ -1,10 +1,10 @@
 import fetch from "node-fetch";
 import express from "express";
-import { admins } from "./config.json";
+import config from "./config.js";
 
 const isAdmin = async (req, res, next) => {
     let { id } = req.discordProfile;
-    req.isAdmin = id in admins; 
+    req.isAdmin = id in config.admins; 
     next();
 }
 
