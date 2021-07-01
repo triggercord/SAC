@@ -1,7 +1,7 @@
 import { Router } from "express";
 const router = Router();
 import redis from "./redis_client.js";
-import { getDiscordProfile } from "./auth.js";
+import { getDiscordProfile, isAdmin } from "./auth.js";
 
 const handleError = (err, req, res) => {
     console.error(err);
@@ -75,6 +75,36 @@ router.get("/unlike/:filename", getDiscordProfile, async (req, res) => {
         redis.srem(key, discordProfile.id).catch(handleError);
     }).then(() => {
         handleSuccess(`unliked ${filename}`, req, res);
+    }).catch(err => handleError(err, req, res));
+});
+
+// add a picture to be liked
+router.get("/add/:filename", [getDiscordProfile, isAdmin], async (req, res) => {
+    let { filename } = req.params;
+    let { discordProfile, isAdmin } = req;
+
+    // if there is an error, because the token is invalid or something
+    if (discordProfile.message) {
+        return res.status(401).json(discordProfile);
+    }
+
+    redis.sadd("filenames", filename).then(() => {
+        handleSuccess(`added ${filename}`, req, res);
+    }).catch(err => handleError(err, req, res));
+});
+
+// remove a picture to be liked
+router.get("/del/:filename", [getDiscordProfile, isAdmin], async (req, res) => {
+    let { filename } = req.params;
+    let { discordProfile, isAdmin } = req;
+
+    // if there is an error, because the token is invalid or something
+    if (discordProfile.message) {
+        return res.status(401).json(discordProfile);
+    }
+
+    redis.srem("filenames", filename).then(() => {
+        handleSuccess(`removed ${filename}`, req, res);
     }).catch(err => handleError(err, req, res));
 });
 

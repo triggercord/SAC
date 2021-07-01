@@ -1,6 +1,12 @@
 import fetch from "node-fetch";
 import express from "express";
+import { admins } from "./config.json";
 
+const isAdmin = async (req, res, next) => {
+    let { id } = req.discordProfile;
+    req.isAdmin = id in admins; 
+    next();
+}
 
 const getDiscordProfile = async (req, res, next) => {
     let { access_token, token_type, expires_in, scope } = req.query;
@@ -32,4 +38,4 @@ const getDiscordProfile = async (req, res, next) => {
 };
 
 
-export { getDiscordProfile };
+export { getDiscordProfile, isAdmin };
