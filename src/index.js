@@ -5,6 +5,10 @@ const app = express();
 import morgan from "morgan";
 app.use(morgan("common"));
 
+
+import cors from "cors";
+app.use(cors());
+
 // register /likes
 import likesRouter from "./likes.js";
 app.use(likesRouter);
