@@ -12,31 +12,47 @@ const handleSuccess = (msg, req, res) => {
     return res.json({ "success": msg });
 }
 
+const VALID_ENTRIES = "entries";
+const USERS_LIKING = "users-liking-entry";
+const LIKED_BY_USER = "entries-liked-by-user";
+
+// error messages
+const ERROR_ENTRY_DOES_NOT_EXIST = "Entry does not exist.";
+const ERROR_NOT_ADMIN = "Unauthorized. Not an admin";
+
+
 // get all likes
 router.get("/likes", async (req, res) => {
-    redis.zrangebyscore("likes", "0", "+inf", "WITHSCORES").then((values) => {
-        let result = {};
-        for (let i = 0; i < values.length; i += 2) {
-            result[values[i]] = values[i + 1];
-        }
-        res.json(result);
-    }).catch(err => handleError(err, req, res));
+    let entries = await redis.smembers(VALID_ENTRIES);
+    let entriesLikedByUsers = {};
+
+    for (let entry of entries) {
+        let users = await redis.smembers(`${USERS_LIKING}:${entry}`);
+        entriesLikedByUsers[entry] = users;
+    }
+
+    res.json(entriesLikedByUsers);
 });
 
 // get likes of single picture
-router.get("/likes/:filename", async (req, res) => {
-    let filename = req.params.filename;
-    redis.zscore("likes", filename).then((score) => {
-        if (!score) {
-            return res.status(404).json({ "error": "not found" });
-        }
-        res.json({ filename: score });
-    }).catch(err => handleError(err, req, res));
+router.get("/likes/by-entry/:entry", [getDiscordProfile, isAdmin], async (req, res) => {
+    let { entry } = req.params;
+
+    if (!isAdmin) {
+        return res.status(401).json({ error: ERROR_NOT_ADMIN });
+    }
+
+    let key = `${USERS_LIKING}:${entry}`;
+    if (!await redis.sismember(VALID_ENTRIES, entry)) {
+        return res.status(404).json({ error: ERROR_ENTRY_DOES_NOT_EXIST });
+    }
+
+    let users = await redis.smembers(key);
+    return res.json(users);
 });
 
-// like a picture
-router.get("/like/:filename", getDiscordProfile, async (req, res) => {
-    let { filename } = req.params;
+// get likes of single picture
+router.get("/likes/by-user/:id?", [getDiscordProfile, isAdmin], async (req, res) => {
     let { discordProfile } = req;
 
     // if there is an error, because the token is invalid or something
@@ -44,21 +60,47 @@ router.get("/like/:filename", getDiscordProfile, async (req, res) => {
         return res.status(401).json(discordProfile);
     }
 
-    redis.sismember("filenames", filename).then((value) => {
+    let id = req.params.id || discordProfile.id;
+
+    // reject if someone is asking for a diff user id and is not an admin
+    if (id != discordProfile.id && !isAdmin) {
+        return res.status(401).json({ error: ERROR_NOT_ADMIN });
+    }
+
+    let key = `${LIKED_BY_USER}:${id}`;
+    if (!await redis.exists(key)) {
+        return res.status(404).json({ error: ERROR_ENTRY_DOES_NOT_EXIST });
+    }
+
+    let entries = await redis.smembers(key);
+    return res.json(entries);
+});
+
+// like a picture
+router.get("/like/:entry", getDiscordProfile, async (req, res) => {
+    let { entry } = req.params;
+    let { discordProfile } = req;
+
+    // if there is an error, because the token is invalid or something
+    if (discordProfile.message) {
+        return res.status(401).json(discordProfile);
+    }
+
+    redis.sismember(VALID_ENTRIES, entry).then((value) => {
         if (!value) {
-            throw "Invalid filename";
+            throw ERROR_ENTRY_DOES_NOT_EXIST;
         }
     }).then(() => {
-        let key = `likes:${filename}`;
-        redis.sadd(key, discordProfile.id).catch(handleError);
+        redis.sadd(`${USERS_LIKING}:${entry}`, discordProfile.id).catch(handleError);
+        redis.sadd(`${LIKED_BY_USER}:${discordProfile.id}`, entry).catch(handleError);
     }).then(() => {
-        handleSuccess(`liked ${filename}`, req, res);
+        handleSuccess(`liked ${entry}`, req, res);
     }).catch(err => handleError(err, req, res));
 });
 
 // unlike a picture
-router.get("/unlike/:filename", getDiscordProfile, async (req, res) => {
-    let { filename } = req.params;
+router.get("/unlike/:entry", getDiscordProfile, async (req, res) => {
+    let { entry } = req.params;
     let { discordProfile } = req;
 
     // if there is an error, because the token is invalid or something
@@ -66,21 +108,29 @@ router.get("/unlike/:filename", getDiscordProfile, async (req, res) => {
         return res.status(401).json(discordProfile);
     }
 
-    redis.sismember("filenames", filename).then((value) => {
-        if (value === 0) {
-            throw "Invalid filename";
+    redis.sismember(VALID_ENTRIES, entry).then((value) => {
+        if (!value) {
+            throw ERROR_ENTRY_DOES_NOT_EXIST;
         }
     }).then(() => {
-        let key = `likes:${filename}`;
-        redis.srem(key, discordProfile.id).catch(handleError);
+        redis.srem(`${USERS_LIKING}:${entry}`, discordProfile.id).catch(handleError);
+        redis.srem(`${LIKED_BY_USER}:${discordProfile.id}`, entry).catch(handleError);
     }).then(() => {
-        handleSuccess(`unliked ${filename}`, req, res);
+        handleSuccess(`unliked ${entry}`, req, res);
     }).catch(err => handleError(err, req, res));
 });
+
+
+// get all likes
+router.get("/entries", async (req, res) => {
+    let entries = await redis.smembers(VALID_ENTRIES);
+    res.json(entries);
+});
+
 
 // add a picture to be liked
-router.get("/add/:filename", [getDiscordProfile, isAdmin], async (req, res) => {
-    let { filename } = req.params;
+router.get("/entries/add/:entry", [getDiscordProfile, isAdmin], async (req, res) => {
+    let { entry } = req.params;
     let { discordProfile, isAdmin } = req;
 
     // if there is an error, because the token is invalid or something
@@ -88,14 +138,19 @@ router.get("/add/:filename", [getDiscordProfile, isAdmin], async (req, res) => {
         return res.status(401).json(discordProfile);
     }
 
-    redis.sadd("filenames", filename).then(() => {
-        handleSuccess(`added ${filename}`, req, res);
+    if (!isAdmin) {
+        return res.status(401).json({ error: ERROR_NOT_ADMIN, profile: discordProfile });
+    }
+
+    redis.sadd(VALID_ENTRIES, entry).then(() => {
+        handleSuccess(`added ${entry}`, req, res);
     }).catch(err => handleError(err, req, res));
 });
 
+
 // remove a picture to be liked
-router.get("/del/:filename", [getDiscordProfile, isAdmin], async (req, res) => {
-    let { filename } = req.params;
+router.get("/entries/del/:entry", [getDiscordProfile, isAdmin], async (req, res) => {
+    let { entry } = req.params;
     let { discordProfile, isAdmin } = req;
 
     // if there is an error, because the token is invalid or something
@@ -103,8 +158,12 @@ router.get("/del/:filename", [getDiscordProfile, isAdmin], async (req, res) => {
         return res.status(401).json(discordProfile);
     }
 
-    redis.srem("filenames", filename).then(() => {
-        handleSuccess(`removed ${filename}`, req, res);
+    if (!isAdmin) {
+        return res.status(401).json({ error: ERROR_NOT_ADMIN, profile: discordProfile });
+    }
+
+    redis.srem(VALID_ENTRIES, entry).then(() => {
+        handleSuccess(`removed ${entry}`, req, res);
     }).catch(err => handleError(err, req, res));
 });
 
