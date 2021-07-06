@@ -3,8 +3,9 @@ import express from "express";
 import config from "./config.js";
 
 const isAdmin = async (req, res, next) => {
-    let { id } = req.discordProfile;
-    req.isAdmin = id in config.admins; 
+    let id = `${req.discordProfile.id}`;
+    let isAdmin = config.admins.includes(id);
+    req.isAdmin = isAdmin;
     next();
 }
 
