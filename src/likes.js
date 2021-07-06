@@ -68,9 +68,6 @@ router.get("/likes/by-user/:id?", [getDiscordProfile, isAdmin], async (req, res)
     }
 
     let key = `${LIKED_BY_USER}:${id}`;
-    if (!await redis.exists(key)) {
-        return res.status(404).json({ error: ERROR_ENTRY_DOES_NOT_EXIST });
-    }
 
     let entries = await redis.smembers(key);
     return res.json(entries);
