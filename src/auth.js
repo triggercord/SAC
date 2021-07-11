@@ -34,6 +34,8 @@ const getDiscordProfile = async (req, res, next) => {
     }
 
     req.discordProfile = discordProfile;
+    req.accessToken = access_token;
+    req.tokenType = token_type;
 
     next();
 };
